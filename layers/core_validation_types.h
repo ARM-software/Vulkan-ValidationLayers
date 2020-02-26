@@ -338,6 +338,7 @@ class IMAGE_STATE : public BINDABLE {
     bool has_ahb_format;                 // True if image was created with an external Android format
     uint64_t ahb_format;                 // External Android format, if provided
     VkImageSubresourceRange full_range;  // The normalized ISR for all levels, layers (slices), and aspects
+    VkExtent3D full_range_image_extent;
     VkSwapchainKHR create_from_swapchain;
     VkSwapchainKHR bind_swapchain;
     uint32_t bind_swapchain_imageIndex;

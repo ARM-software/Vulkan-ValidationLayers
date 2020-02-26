@@ -174,6 +174,72 @@ RangeEncoder::RangeEncoder(const VkImageSubresourceRange& full_range, const Aspe
     PopulateFunctionPointers();
 }
 
+BlitSubresource::BlitSubresource(const BlitRangeEncoder& encoder, const VkImageSubresource& subres, const VkOffset3D& offset_)
+    : Subresource(encoder, subres), offset(offset_) {}
+
+BlitRangeEncoder::BlitRangeEncoder(const VkImageSubresourceRange& full_range, const VkExtent3D& full_range_image_extent,
+                                   const AspectParameters* param)
+    : RangeEncoder(full_range, param),
+      full_range_image_extent_(full_range_image_extent),
+      limits_(param->AspectMask(), full_range.levelCount, full_range.layerCount, param->AspectCount(),
+              {static_cast<int32_t>(full_range_image_extent_.width), static_cast<int32_t>(full_range_image_extent_.height),
+               static_cast<int32_t>(full_range_image_extent_.depth)}),
+      offset_size_({static_cast<int32_t>(limits_.aspect_index * AspectSize()), offset_size_.x * limits_.offset.x,
+                    offset_size_.y * limits_.offset.y}),
+      encode_blit_function_(nullptr),
+      decode_blit_function_(nullptr) {
+    PopulateFunctionPointers();
+}
+
+void BlitRangeEncoder::PopulateFunctionPointers() {
+    // Select the encode/decode specialists
+    if (limits_.offset.z == 1) {
+        if (limits_.offset.y == 1) {
+            encode_blit_function_ = &BlitRangeEncoder::Encode1D;
+            decode_blit_function_ = &BlitRangeEncoder::Decode1D;
+        } else {
+            encode_blit_function_ = &BlitRangeEncoder::Encode2D;
+            decode_blit_function_ = &BlitRangeEncoder::Decode2D;
+        }
+    } else {
+        encode_blit_function_ = &BlitRangeEncoder::Encode3D;
+        decode_blit_function_ = &BlitRangeEncoder::Decode3D;
+    }
+}
+
+IndexType BlitRangeEncoder::Encode1D(const BlitSubresource& pos) const { return pos.offset.x * OffsetXSize(); }
+
+IndexType BlitRangeEncoder::Encode2D(const BlitSubresource& pos) const {
+    return (pos.offset.x * OffsetXSize()) + (pos.offset.y * OffsetYSize());
+}
+IndexType BlitRangeEncoder::Encode3D(const BlitSubresource& pos) const {
+    return (pos.offset.x * OffsetXSize()) + (pos.offset.y * OffsetYSize()) + (pos.offset.z * OffsetZSize());
+}
+
+IndexType BlitRangeEncoder::Decode1D(const IndexType& encode, BlitSubresource& blit_decode) const {
+    blit_decode.offset.y = 1;
+    blit_decode.offset.z = 1;
+    blit_decode.offset.x = static_cast<int32_t>(encode / OffsetXSize());
+    return (encode % OffsetXSize());
+}
+
+IndexType BlitRangeEncoder::Decode2D(const IndexType& encode, BlitSubresource& blit_decode) const {
+    blit_decode.offset.z = 1;
+    blit_decode.offset.y = static_cast<int32_t>(encode / OffsetYSize());
+    const IndexType new_encode = encode - OffsetYSize() * blit_decode.offset.y;
+    blit_decode.offset.x = static_cast<int32_t>(new_encode / OffsetXSize());
+    return (new_encode % OffsetXSize());
+}
+
+IndexType BlitRangeEncoder::Decode3D(const IndexType& encode, BlitSubresource& blit_decode) const {
+    blit_decode.offset.z = static_cast<int32_t>(encode / OffsetZSize());
+    IndexType new_encode = encode - OffsetZSize() * blit_decode.offset.z;
+    blit_decode.offset.y = static_cast<int32_t>(new_encode / OffsetYSize());
+    new_encode = new_encode - OffsetYSize() * blit_decode.offset.y;
+    blit_decode.offset.x = static_cast<int32_t>(new_encode / OffsetXSize());
+    return (new_encode % OffsetXSize());
+}
+
 static bool IsValid(const RangeEncoder& encoder, const VkImageSubresourceRange& bounds) {
     const auto& limits = encoder.Limits();
     return (((bounds.aspectMask & limits.aspectMask) == bounds.aspectMask) &&

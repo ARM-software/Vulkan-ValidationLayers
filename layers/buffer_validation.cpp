@@ -76,6 +76,7 @@ IMAGE_STATE::IMAGE_STATE(VkImage img, const VkImageCreateInfo *pCreateInfo)
       has_ahb_format(false),
       ahb_format(0),
       full_range{MakeImageFullRange(createInfo)},
+      full_range_image_extent(createInfo.extent),
       create_from_swapchain(VK_NULL_HANDLE),
       bind_swapchain(VK_NULL_HANDLE),
       bind_swapchain_imageIndex(0),
